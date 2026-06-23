@@ -37,7 +37,7 @@ impl DiffParser {
         }
     }
 
-    pub fn feed(&mut self, line: &str) -> Vec<Block> {
+    pub fn feed(&mut self, line: &str, raw_line: &str) -> Vec<Block> {
         self.pending.clear();
 
         if line.starts_with("diff ") {
@@ -49,13 +49,13 @@ impl DiffParser {
         }
 
         if !self.in_file {
-            self.plain_lines.push(line.to_string());
+            self.plain_lines.push(raw_line.to_string());
             return std::mem::take(&mut self.pending);
         }
 
         if line.starts_with("+++ b/") || line.starts_with("+++ /dev/null") {
-            if line.starts_with("+++ b/") {
-                self.current_filename = Some(line[6..].to_string());
+            if let Some(name) = line.strip_prefix("+++ b/") {
+                self.current_filename = Some(name.to_string());
             }
             self.current_header.push(line.to_string());
             return std::mem::take(&mut self.pending);
@@ -72,18 +72,14 @@ impl DiffParser {
             return std::mem::take(&mut self.pending);
         }
 
-        if line.starts_with('+') {
-            self.current_lines
-                .push(DiffLine::Added(line[1..].to_string()));
-        } else if line.starts_with('-') {
-            self.current_lines
-                .push(DiffLine::Removed(line[1..].to_string()));
-        } else if line.starts_with(' ') {
-            self.current_lines
-                .push(DiffLine::Context(line[1..].to_string()));
+        if let Some(rest) = line.strip_prefix('+') {
+            self.current_lines.push(DiffLine::Added(rest.to_string()));
+        } else if let Some(rest) = line.strip_prefix('-') {
+            self.current_lines.push(DiffLine::Removed(rest.to_string()));
+        } else if let Some(rest) = line.strip_prefix(' ') {
+            self.current_lines.push(DiffLine::Context(rest.to_string()));
         } else {
-            self.current_lines
-                .push(DiffLine::Context(line.to_string()));
+            self.current_lines.push(DiffLine::Context(line.to_string()));
         }
 
         std::mem::take(&mut self.pending)
@@ -138,7 +134,7 @@ mod tests {
         let mut parser = DiffParser::new();
         let mut blocks = Vec::new();
         for line in input.lines() {
-            blocks.extend(parser.feed(line));
+            blocks.extend(parser.feed(line, line));
         }
         blocks.extend(parser.finish());
         blocks
@@ -259,7 +255,10 @@ index 1234567..0000000
         match &blocks[0] {
             Block::Diff(file) => {
                 assert!(file.filename.is_none());
-                assert!(file.header_lines.iter().any(|h| h.starts_with("deleted file")));
+                assert!(file
+                    .header_lines
+                    .iter()
+                    .any(|h| h.starts_with("deleted file")));
             }
             _ => panic!("expected Diff block"),
         }
@@ -269,20 +268,23 @@ index 1234567..0000000
     fn streaming_emits_blocks_incrementally() {
         let mut parser = DiffParser::new();
 
-        let blocks = parser.feed("commit abc123");
+        let blocks = parser.feed("commit abc123", "commit abc123");
         assert!(blocks.is_empty());
 
-        let blocks = parser.feed("diff --git a/foo.rs b/foo.rs");
+        let blocks = parser.feed(
+            "diff --git a/foo.rs b/foo.rs",
+            "diff --git a/foo.rs b/foo.rs",
+        );
         assert_eq!(blocks.len(), 1);
         assert!(matches!(&blocks[0], Block::Plain(_)));
 
-        let blocks = parser.feed("+++ b/foo.rs");
+        let blocks = parser.feed("+++ b/foo.rs", "+++ b/foo.rs");
         assert!(blocks.is_empty());
 
-        let blocks = parser.feed("@@ -1 +1 @@");
+        let blocks = parser.feed("@@ -1 +1 @@", "@@ -1 +1 @@");
         assert!(blocks.is_empty());
 
-        let blocks = parser.feed("+new");
+        let blocks = parser.feed("+new", "+new");
         assert!(blocks.is_empty());
 
         let blocks = parser.finish();

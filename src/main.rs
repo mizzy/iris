@@ -16,6 +16,11 @@ fn main() {
 
     let args: Vec<String> = env::args().collect();
 
+    if args.iter().any(|a| a == "--help" || a == "-h") {
+        print_help();
+        return;
+    }
+
     if args.iter().any(|a| a == "--list-themes") {
         let ts = ThemeSet::load_defaults();
         for name in ts.themes.keys() {
@@ -58,6 +63,26 @@ fn main() {
     }
 }
 
+fn print_help() {
+    let version = env!("CARGO_PKG_VERSION");
+    println!(
+        "\
+iris {version} — syntax highlighter for git output
+
+USAGE:
+    git diff | iris
+    git log -p | iris
+    git config --global core.pager iris
+
+OPTIONS:
+    -h, --help          Show this help
+    --list-themes       List available color themes
+
+ENVIRONMENT:
+    IRIS_THEME          Color theme (default: base16-ocean.dark)"
+    );
+}
+
 fn process_stdin<W: Write>(ss: &SyntaxSet, theme: &syntect::highlighting::Theme, out: &mut W) {
     let stdin = io::stdin();
     let mut parser = diff::DiffParser::new();
@@ -68,9 +93,9 @@ fn process_stdin<W: Write>(ss: &SyntaxSet, theme: &syntect::highlighting::Theme,
             Err(_) => break,
         };
 
-        let line = strip_ansi(&line);
+        let stripped = strip_ansi(&line);
 
-        for block in parser.feed(&line) {
+        for block in parser.feed(&stripped, &line) {
             if write_block(&block, ss, theme, out).is_err() {
                 return;
             }
