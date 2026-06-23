@@ -1,6 +1,8 @@
 # Iris
 
-A syntax highlighter for `git diff` and `git log -p` output.
+A syntax highlighter for git output. Works as `core.pager` for all git subcommands — highlights diffs while passing non-diff output through unchanged.
+
+![screenshot](screenshot.png)
 
 iris reads unified diff from stdin, detects the language of each changed file, and prints the diff with syntax-highlighted code while preserving the familiar diff format (headers, `+`/`-` markers, and hunk ranges).
 
