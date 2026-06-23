@@ -17,7 +17,7 @@ pub struct DiffFile {
 }
 
 pub struct DiffParser {
-    blocks: Vec<Block>,
+    pending: Vec<Block>,
     plain_lines: Vec<String>,
     current_header: Vec<String>,
     current_filename: Option<String>,
@@ -28,7 +28,7 @@ pub struct DiffParser {
 impl DiffParser {
     pub fn new() -> Self {
         Self {
-            blocks: Vec::new(),
+            pending: Vec::new(),
             plain_lines: Vec::new(),
             current_header: Vec::new(),
             current_filename: None,
@@ -37,18 +37,20 @@ impl DiffParser {
         }
     }
 
-    pub fn feed(&mut self, line: &str) {
+    pub fn feed(&mut self, line: &str) -> Vec<Block> {
+        self.pending.clear();
+
         if line.starts_with("diff ") {
             self.flush_file();
             self.flush_plain();
             self.current_header.push(line.to_string());
             self.in_file = true;
-            return;
+            return std::mem::take(&mut self.pending);
         }
 
         if !self.in_file {
             self.plain_lines.push(line.to_string());
-            return;
+            return std::mem::take(&mut self.pending);
         }
 
         if line.starts_with("+++ b/") || line.starts_with("+++ /dev/null") {
@@ -56,18 +58,18 @@ impl DiffParser {
                 self.current_filename = Some(line[6..].to_string());
             }
             self.current_header.push(line.to_string());
-            return;
+            return std::mem::take(&mut self.pending);
         }
 
         if is_header_line(line) {
             self.current_header.push(line.to_string());
-            return;
+            return std::mem::take(&mut self.pending);
         }
 
         if line.starts_with("@@") {
             self.current_lines
                 .push(DiffLine::HunkHeader(line.to_string()));
-            return;
+            return std::mem::take(&mut self.pending);
         }
 
         if line.starts_with('+') {
@@ -83,18 +85,20 @@ impl DiffParser {
             self.current_lines
                 .push(DiffLine::Context(line.to_string()));
         }
+
+        std::mem::take(&mut self.pending)
     }
 
     fn flush_plain(&mut self) {
         if !self.plain_lines.is_empty() {
-            self.blocks
+            self.pending
                 .push(Block::Plain(std::mem::take(&mut self.plain_lines)));
         }
     }
 
     fn flush_file(&mut self) {
         if !self.current_header.is_empty() || !self.current_lines.is_empty() {
-            self.blocks.push(Block::Diff(DiffFile {
+            self.pending.push(Block::Diff(DiffFile {
                 header_lines: std::mem::take(&mut self.current_header),
                 filename: self.current_filename.take(),
                 lines: std::mem::take(&mut self.current_lines),
@@ -104,9 +108,10 @@ impl DiffParser {
     }
 
     pub fn finish(mut self) -> Vec<Block> {
+        self.pending.clear();
         self.flush_file();
         self.flush_plain();
-        self.blocks
+        self.pending
     }
 }
 
@@ -129,6 +134,16 @@ fn is_header_line(line: &str) -> bool {
 mod tests {
     use super::*;
 
+    fn parse_all(input: &str) -> Vec<Block> {
+        let mut parser = DiffParser::new();
+        let mut blocks = Vec::new();
+        for line in input.lines() {
+            blocks.extend(parser.feed(line));
+        }
+        blocks.extend(parser.finish());
+        blocks
+    }
+
     #[test]
     fn parse_simple_diff() {
         let input = "\
@@ -141,11 +156,7 @@ index 1234567..abcdefg 100644
 -    old();
 +    new();
  }";
-        let mut parser = DiffParser::new();
-        for line in input.lines() {
-            parser.feed(line);
-        }
-        let blocks = parser.finish();
+        let blocks = parse_all(input);
 
         assert_eq!(blocks.len(), 1);
         match &blocks[0] {
@@ -174,11 +185,7 @@ index 1234567..abcdefg 100644
 @@ -1 +1 @@
 -old
 +new";
-        let mut parser = DiffParser::new();
-        for line in input.lines() {
-            parser.feed(line);
-        }
-        let blocks = parser.finish();
+        let blocks = parse_all(input);
 
         assert_eq!(blocks.len(), 2);
         match &blocks[0] {
@@ -211,11 +218,7 @@ diff --git a/b.py b/b.py
 @@ -1 +1 @@
 -old_b
 +new_b";
-        let mut parser = DiffParser::new();
-        for line in input.lines() {
-            parser.feed(line);
-        }
-        let blocks = parser.finish();
+        let blocks = parse_all(input);
 
         assert_eq!(blocks.len(), 2);
         match &blocks[0] {
@@ -231,11 +234,7 @@ diff --git a/b.py b/b.py
     #[test]
     fn plain_only_input() {
         let input = "just some text\nno diff here";
-        let mut parser = DiffParser::new();
-        for line in input.lines() {
-            parser.feed(line);
-        }
-        let blocks = parser.finish();
+        let blocks = parse_all(input);
 
         assert_eq!(blocks.len(), 1);
         match &blocks[0] {
@@ -254,11 +253,7 @@ index 1234567..0000000
 +++ /dev/null
 @@ -1 +0,0 @@
 -bye";
-        let mut parser = DiffParser::new();
-        for line in input.lines() {
-            parser.feed(line);
-        }
-        let blocks = parser.finish();
+        let blocks = parse_all(input);
 
         assert_eq!(blocks.len(), 1);
         match &blocks[0] {
@@ -268,5 +263,30 @@ index 1234567..0000000
             }
             _ => panic!("expected Diff block"),
         }
+    }
+
+    #[test]
+    fn streaming_emits_blocks_incrementally() {
+        let mut parser = DiffParser::new();
+
+        let blocks = parser.feed("commit abc123");
+        assert!(blocks.is_empty());
+
+        let blocks = parser.feed("diff --git a/foo.rs b/foo.rs");
+        assert_eq!(blocks.len(), 1);
+        assert!(matches!(&blocks[0], Block::Plain(_)));
+
+        let blocks = parser.feed("+++ b/foo.rs");
+        assert!(blocks.is_empty());
+
+        let blocks = parser.feed("@@ -1 +1 @@");
+        assert!(blocks.is_empty());
+
+        let blocks = parser.feed("+new");
+        assert!(blocks.is_empty());
+
+        let blocks = parser.finish();
+        assert_eq!(blocks.len(), 1);
+        assert!(matches!(&blocks[0], Block::Diff(_)));
     }
 }
