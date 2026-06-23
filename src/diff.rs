@@ -54,8 +54,8 @@ impl DiffParser {
         }
 
         if line.starts_with("+++ b/") || line.starts_with("+++ /dev/null") {
-            if line.starts_with("+++ b/") {
-                self.current_filename = Some(line[6..].to_string());
+            if let Some(name) = line.strip_prefix("+++ b/") {
+                self.current_filename = Some(name.to_string());
             }
             self.current_header.push(line.to_string());
             return std::mem::take(&mut self.pending);
@@ -72,18 +72,14 @@ impl DiffParser {
             return std::mem::take(&mut self.pending);
         }
 
-        if line.starts_with('+') {
-            self.current_lines
-                .push(DiffLine::Added(line[1..].to_string()));
-        } else if line.starts_with('-') {
-            self.current_lines
-                .push(DiffLine::Removed(line[1..].to_string()));
-        } else if line.starts_with(' ') {
-            self.current_lines
-                .push(DiffLine::Context(line[1..].to_string()));
+        if let Some(rest) = line.strip_prefix('+') {
+            self.current_lines.push(DiffLine::Added(rest.to_string()));
+        } else if let Some(rest) = line.strip_prefix('-') {
+            self.current_lines.push(DiffLine::Removed(rest.to_string()));
+        } else if let Some(rest) = line.strip_prefix(' ') {
+            self.current_lines.push(DiffLine::Context(rest.to_string()));
         } else {
-            self.current_lines
-                .push(DiffLine::Context(line.to_string()));
+            self.current_lines.push(DiffLine::Context(line.to_string()));
         }
 
         std::mem::take(&mut self.pending)
@@ -259,7 +255,10 @@ index 1234567..0000000
         match &blocks[0] {
             Block::Diff(file) => {
                 assert!(file.filename.is_none());
-                assert!(file.header_lines.iter().any(|h| h.starts_with("deleted file")));
+                assert!(file
+                    .header_lines
+                    .iter()
+                    .any(|h| h.starts_with("deleted file")));
             }
             _ => panic!("expected Diff block"),
         }
@@ -272,7 +271,10 @@ index 1234567..0000000
         let blocks = parser.feed("commit abc123", "commit abc123");
         assert!(blocks.is_empty());
 
-        let blocks = parser.feed("diff --git a/foo.rs b/foo.rs", "diff --git a/foo.rs b/foo.rs");
+        let blocks = parser.feed(
+            "diff --git a/foo.rs b/foo.rs",
+            "diff --git a/foo.rs b/foo.rs",
+        );
         assert_eq!(blocks.len(), 1);
         assert!(matches!(&blocks[0], Block::Plain(_)));
 
