@@ -1,4 +1,4 @@
-# iris
+# Iris
 
 A syntax highlighter for `git diff` and `git log -p` output.
 
@@ -19,7 +19,10 @@ git diff | iris
 # Highlight git log -p output
 git log -p | iris
 
-# Use as a git pager
+# Use as the default git pager (all subcommands)
+git config --global core.pager iris
+
+# Or limit to diff-related subcommands only
 git config --global pager.diff iris
 git config --global pager.log iris
 git config --global pager.show iris
