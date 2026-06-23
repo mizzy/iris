@@ -37,7 +37,7 @@ impl DiffParser {
         }
     }
 
-    pub fn feed(&mut self, line: &str) -> Vec<Block> {
+    pub fn feed(&mut self, line: &str, raw_line: &str) -> Vec<Block> {
         self.pending.clear();
 
         if line.starts_with("diff ") {
@@ -49,7 +49,7 @@ impl DiffParser {
         }
 
         if !self.in_file {
-            self.plain_lines.push(line.to_string());
+            self.plain_lines.push(raw_line.to_string());
             return std::mem::take(&mut self.pending);
         }
 
@@ -138,7 +138,7 @@ mod tests {
         let mut parser = DiffParser::new();
         let mut blocks = Vec::new();
         for line in input.lines() {
-            blocks.extend(parser.feed(line));
+            blocks.extend(parser.feed(line, line));
         }
         blocks.extend(parser.finish());
         blocks
@@ -269,20 +269,20 @@ index 1234567..0000000
     fn streaming_emits_blocks_incrementally() {
         let mut parser = DiffParser::new();
 
-        let blocks = parser.feed("commit abc123");
+        let blocks = parser.feed("commit abc123", "commit abc123");
         assert!(blocks.is_empty());
 
-        let blocks = parser.feed("diff --git a/foo.rs b/foo.rs");
+        let blocks = parser.feed("diff --git a/foo.rs b/foo.rs", "diff --git a/foo.rs b/foo.rs");
         assert_eq!(blocks.len(), 1);
         assert!(matches!(&blocks[0], Block::Plain(_)));
 
-        let blocks = parser.feed("+++ b/foo.rs");
+        let blocks = parser.feed("+++ b/foo.rs", "+++ b/foo.rs");
         assert!(blocks.is_empty());
 
-        let blocks = parser.feed("@@ -1 +1 @@");
+        let blocks = parser.feed("@@ -1 +1 @@", "@@ -1 +1 @@");
         assert!(blocks.is_empty());
 
-        let blocks = parser.feed("+new");
+        let blocks = parser.feed("+new", "+new");
         assert!(blocks.is_empty());
 
         let blocks = parser.finish();

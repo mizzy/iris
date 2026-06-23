@@ -68,9 +68,9 @@ fn process_stdin<W: Write>(ss: &SyntaxSet, theme: &syntect::highlighting::Theme,
             Err(_) => break,
         };
 
-        let line = strip_ansi(&line);
+        let stripped = strip_ansi(&line);
 
-        for block in parser.feed(&line) {
+        for block in parser.feed(&stripped, &line) {
             if write_block(&block, ss, theme, out).is_err() {
                 return;
             }
