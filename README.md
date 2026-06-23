@@ -2,6 +2,8 @@
 
 A syntax highlighter for `git diff` and `git log -p` output.
 
+![screenshot](screenshot.png)
+
 iris reads unified diff from stdin, detects the language of each changed file, and prints the diff with syntax-highlighted code while preserving the familiar diff format (headers, `+`/`-` markers, and hunk ranges).
 
 ## Install
