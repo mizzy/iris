@@ -9,7 +9,6 @@ mod diff;
 mod highlight;
 
 fn main() {
-    // Reset SIGPIPE to default so broken pipe kills the process cleanly
     #[cfg(unix)]
     unsafe {
         libc::signal(libc::SIGPIPE, libc::SIG_DFL);
@@ -34,7 +33,10 @@ fn main() {
         .get(&theme_name)
         .unwrap_or_else(|| ts.themes.values().next().expect("no themes available"));
 
-    if io::stdout().is_terminal() {
+    let is_git_pager = env::var("GIT_PAGER_IN_USE").is_ok();
+    let need_pager = !is_git_pager && io::stdout().is_terminal();
+
+    if need_pager {
         let mut child = Command::new("less")
             .arg("-R")
             .stdin(Stdio::piped())
@@ -66,6 +68,8 @@ fn process_stdin<W: Write>(ss: &SyntaxSet, theme: &syntect::highlighting::Theme,
             Err(_) => break,
         };
 
+        let line = strip_ansi(&line);
+
         for block in parser.feed(&line) {
             if write_block(&block, ss, theme, out).is_err() {
                 return;
@@ -78,6 +82,11 @@ fn process_stdin<W: Write>(ss: &SyntaxSet, theme: &syntect::highlighting::Theme,
             return;
         }
     }
+}
+
+fn strip_ansi(s: &str) -> String {
+    let bytes = strip_ansi_escapes::strip(s);
+    String::from_utf8(bytes).unwrap_or_else(|_| s.to_string())
 }
 
 fn write_block<W: Write>(
