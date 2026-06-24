@@ -3,7 +3,7 @@ use std::io::{self, BufRead, IsTerminal, Write};
 use std::process::{Command, Stdio};
 
 use syntect::highlighting::ThemeSet;
-use syntect::parsing::SyntaxSet;
+use syntect::parsing::{SyntaxSet, SyntaxSetBuilder};
 
 mod diff;
 mod highlight;
@@ -30,7 +30,7 @@ fn main() {
     }
 
     let theme_name = env::var("IRIS_THEME").unwrap_or_else(|_| "base16-ocean.dark".to_string());
-    let ss = SyntaxSet::load_defaults_newlines();
+    let ss = load_syntax_set();
     let ts = ThemeSet::load_defaults();
 
     let theme = ts
@@ -61,6 +61,29 @@ fn main() {
         process_stdin(&ss, theme, &mut out);
         let _ = out.flush();
     }
+}
+
+fn load_syntax_set() -> SyntaxSet {
+    let bundled_bytes = include_bytes!(concat!(env!("OUT_DIR"), "/syntax_set.bin"));
+
+    if let Ok(syntax_set) = syntect::dumps::from_uncompressed_data::<SyntaxSet>(bundled_bytes) {
+        let user_dir = iris_config_dir().join("syntaxes");
+        if user_dir.exists() {
+            let mut builder: SyntaxSetBuilder = syntax_set.into_builder();
+            let _ = builder.add_from_folder(&user_dir, true);
+            return builder.build();
+        }
+        return syntax_set;
+    }
+
+    SyntaxSet::load_defaults_newlines()
+}
+
+fn iris_config_dir() -> std::path::PathBuf {
+    if let Some(home) = env::var_os("HOME") {
+        return std::path::PathBuf::from(home).join(".config/iris");
+    }
+    std::path::PathBuf::from(".config/iris")
 }
 
 fn print_help() {
