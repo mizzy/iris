@@ -11,3 +11,6 @@ libc = "0.2"
 similar = "2"
 strip-ansi-escapes = "0.2"
 syntect = "5"
+
+[build-dependencies]
+syntect = "5"
