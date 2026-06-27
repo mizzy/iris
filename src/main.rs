@@ -116,6 +116,7 @@ fn process_stdin<W: Write>(ss: &SyntaxSet, theme: &syntect::highlighting::Theme,
             Err(_) => break,
         };
 
+        let line = line.replace('\t', "    ");
         let stripped = strip_ansi(&line);
 
         for block in parser.feed(&stripped, &line) {
