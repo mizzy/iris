@@ -1,6 +1,6 @@
 [package]
 name = "iris"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 description = "Syntax highlighter for git diff and git log -p output"
 license = "MIT OR Apache-2.0"

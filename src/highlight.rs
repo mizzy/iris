@@ -60,7 +60,10 @@ pub fn print_file<W: Write>(
             }
             DiffLine::Added(text) => {
                 let highlighted = highlight_line(&mut h, ss, text);
-                writeln!(out, "{BOLD_GREEN}+{ADDITION_BG}{highlighted}{RESET}")?;
+                writeln!(
+                    out,
+                    "{ADDITION_BG}{BOLD_GREEN}+{RESET}{ADDITION_BG}{highlighted}{RESET}"
+                )?;
                 i += 1;
             }
         }
@@ -110,11 +113,17 @@ fn print_change_group<W: Write>(
     } else {
         for text in removed {
             let highlighted = highlight_line(h, ss, text);
-            writeln!(out, "{BOLD_RED}-{DELETION_BG}{highlighted}{RESET}")?;
+            writeln!(
+                out,
+                "{DELETION_BG}{BOLD_RED}-{RESET}{DELETION_BG}{highlighted}{RESET}"
+            )?;
         }
         for text in added {
             let highlighted = highlight_line(h, ss, text);
-            writeln!(out, "{BOLD_GREEN}+{ADDITION_BG}{highlighted}{RESET}")?;
+            writeln!(
+                out,
+                "{ADDITION_BG}{BOLD_GREEN}+{RESET}{ADDITION_BG}{highlighted}{RESET}"
+            )?;
         }
     }
     Ok(())
@@ -139,7 +148,7 @@ fn print_word_diff_line<W: Write>(
 ) -> io::Result<()> {
     let diff = TextDiff::from_words(old, new);
 
-    write!(out, "{BOLD_RED}-{DELETION_BG}")?;
+    write!(out, "{DELETION_BG}{BOLD_RED}-{RESET}{DELETION_BG}")?;
     for change in diff.iter_all_changes() {
         match change.tag() {
             ChangeTag::Equal => {
@@ -155,7 +164,7 @@ fn print_word_diff_line<W: Write>(
     }
     writeln!(out, "{RESET}")?;
 
-    write!(out, "{BOLD_GREEN}+{ADDITION_BG}")?;
+    write!(out, "{ADDITION_BG}{BOLD_GREEN}+{RESET}{ADDITION_BG}")?;
     for change in diff.iter_all_changes() {
         match change.tag() {
             ChangeTag::Equal => {
